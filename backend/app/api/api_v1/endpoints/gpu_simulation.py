@@ -13,7 +13,7 @@ async def simulate_gpu_workload(workload_config: WorkloadConfig) -> SimulationRe
     """
     try:
         simulator = GPUWorkloadSimulator()
-        result = simulator.simulate_workload_power(workload_config.dict())
+        result = simulator.simulate_workload_power(workload_config.model_dump())
         return SimulationResult(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"시뮬레이션 오류: {str(e)}")

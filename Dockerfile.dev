@@ -1,0 +1,40 @@
+# 개발 환경용 통합 Dockerfile
+FROM python:3.11-slim
+
+# Node.js 설치
+RUN apt-get update && apt-get install -y \
+    curl \
+    gcc \
+    libpq-dev \
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# 작업 디렉토리 설정
+WORKDIR /workspace
+
+# Python 의존성 설치
+COPY backend/requirements.txt ./backend/
+RUN cd backend && pip install --no-cache-dir -r requirements.txt
+
+# Node.js 의존성 설치  
+COPY frontend/package*.json ./frontend/
+RUN cd frontend && npm install
+
+# 전체 프로젝트 복사
+COPY . .
+
+# 데이터 디렉토리 생성
+RUN mkdir -p data
+
+# 포트 노출
+EXPOSE 3000 8000
+
+# 스타트업 스크립트 생성
+RUN echo '#!/bin/bash\n\
+echo "🚀 Starting AI Datacenter Power Analyzer..."\n\
+cd /workspace/backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload &\n\
+cd /workspace/frontend && npm run dev -- --host 0.0.0.0 --port 3000 &\n\
+wait' > /start.sh && chmod +x /start.sh
+
+CMD ["/start.sh"]

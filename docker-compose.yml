@@ -1,46 +1,27 @@
-version: '3.8'
-
 services:
-  frontend:
+  # 개발 환경용 - 백엔드와 프론트엔드를 하나의 컨테이너로 통합
+  app:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.dev
     ports:
-      - "3000:3000"
+      - "3000:3000"  # Frontend
+      - "8000:8000"  # Backend API
     environment:
+      - NODE_ENV=development
       - REACT_APP_API_URL=http://localhost:8000
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - backend
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
       - DATABASE_URL=sqlite:///./data/app.db
-      - KEPCO_API_KEY=${KEPCO_API_KEY}
-      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - KEPCO_API_KEY=${KEPCO_API_KEY:-sample_key}
+      - WEATHER_API_KEY=${WEATHER_API_KEY:-sample_key}
     volumes:
-      - ./backend:/app
-      - ./data:/app/data
-    depends_on:
-      - db
-
-  db:
-    image: postgres:15
-    environment:
-      - POSTGRES_DB=datacenter_analyzer
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
+      - .:/workspace
+      - /workspace/node_modules
+      - /workspace/backend/__pycache__
+    working_dir: /workspace
+    command: >
+      sh -c "
+        echo 'Starting AI Datacenter Power Analyzer...' &&
+        cd /workspace/backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload &
+        cd /workspace/frontend && npm run dev -- --host 0.0.0.0 --port 3000 &
+        wait
+      "

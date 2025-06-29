@@ -38,6 +38,8 @@ class PowerProfile(str, Enum):
 
 class WorkloadConfig(BaseModel):
     """워크로드 설정"""
+    model_config = {"protected_namespaces": ()}
+    
     gpu_type: GPUType = Field(..., description="GPU 타입")
     workload_type: WorkloadType = Field(..., description="워크로드 타입")
     utilization: float = Field(default=85.0, ge=0, le=100, description="GPU 사용률 (%)")

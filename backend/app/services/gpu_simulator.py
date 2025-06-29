@@ -201,6 +201,9 @@ class GPUWorkloadSimulator:
         )
         
         # 실제 전력 소모 계산
+        if power_efficiency is None:
+            raise ValueError(f"Power efficiency calculation failed for {gpu_type} with {workload_type}")
+        
         actual_power_watts = base_tdp * power_efficiency * (utilization / 100)
         hourly_power_kw = actual_power_watts / 1000
         total_energy_kwh = hourly_power_kw * duration_hours
