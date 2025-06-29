@@ -84,7 +84,13 @@ export function PowerAnalysis() {
       ...value as RegionData,
       region_name: key
     }))
-    .filter(region => region.current_consumption_mwh !== null && region.usage_share_percent !== null) : [];
+    .filter(region => 
+      region.current_consumption_mwh !== null && 
+      region.usage_share_percent !== null &&
+      region.average_price_krw_kwh !== null &&
+      region.overall_efficiency_score !== null &&
+      region.ranking !== null
+    ) : [];
 
   const handleRegionSelect = (regionName: string) => {
     setSelectedRegion(regionName);

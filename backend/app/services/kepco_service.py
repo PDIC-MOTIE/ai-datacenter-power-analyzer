@@ -89,10 +89,15 @@ class KEPCODataService:
         
         try:
             if not self.comprehensive_data.empty:
-                # 실제 분석 데이터 사용
+                # 실제 분석 데이터 사용 (null 값이 있는 지역 제외)
                 regional_data = {}
                 for region in self.comprehensive_data.index:
                     row = self.comprehensive_data.loc[region]
+                    
+                    # null 값이 있는 지역은 제외
+                    if pd.isna(row['사용량kWh']) or pd.isna(row['평균판매단가원kWh']) or region == '미분류':
+                        continue
+                        
                     regional_data[region] = {
                         "region_name": region,
                         "current_consumption_mwh": float(row['사용량kWh']) / 1000,  # kWh to MWh
