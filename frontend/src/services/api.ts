@@ -98,6 +98,32 @@ export const powerAnalysisApi = {
     return response.data;
   },
 
+  getRegionalPowerConsumption: async (year: number = 2024) => {
+    const response = await api.get(`/power-analysis/regions?year=${year}`);
+    return response.data;
+  },
+
+  getOptimalDatacenterLocations: async (requiredPowerMw: number = 100, topN: number = 5) => {
+    const response = await api.post('/power-analysis/optimal-locations', {
+      required_power_mw: requiredPowerMw,
+      top_n: topN
+    });
+    return response.data;
+  },
+
+  getPowerCostGap: async () => {
+    const response = await api.get('/power-analysis/cost-gap');
+    return response.data;
+  },
+
+  analyzeDatacenterImpact: async (location: string, datacenterPowerMw: number) => {
+    const response = await api.post('/power-analysis/datacenter-impact', {
+      location,
+      datacenter_power_mw: datacenterPowerMw
+    });
+    return response.data;
+  },
+
   getGridStatus: async (): Promise<PowerGridStatus> => {
     const response = await api.get('/power-analysis/grid-status');
     return response.data;

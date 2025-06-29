@@ -15,9 +15,51 @@ class LocationOptimizationRequest(BaseModel):
     top_n: int = 5
 
 @router.get("/regions")
-async def get_regional_power_data(year: int = Query(2023, description="조회 연도")) -> Dict[str, Any]:
+async def get_regional_power_data(year: int = Query(2024, description="조회 연도")) -> Dict[str, Any]:
     """
-    지역별 전력 현황 데이터 조회
+    지역별 전력 현황 데이터 조회 - 실제 KEPCO 데이터 기반
+    """
+    try:
+        kepco_service = KEPCODataService()
+        data = kepco_service.get_regional_power_consumption(year)
+        return data
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"데이터 조회 실패: {str(e)}")
+
+@router.post("/optimal-locations")
+async def get_optimal_datacenter_locations(request: LocationOptimizationRequest) -> List[Dict[str, Any]]:
+    """
+    데이터센터 최적 입지 추천
+    """
+    try:
+        kepco_service = KEPCODataService()
+        locations = kepco_service.find_optimal_datacenter_locations(
+            required_power_mw=request.required_power_mw,
+            top_n=request.top_n
+        )
+        return locations
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"최적 입지 분석 실패: {str(e)}")
+
+@router.get("/cost-gap")
+async def get_power_cost_gap() -> Dict[str, Any]:
+    """
+    전력단가 지역별 격차 분석
+    """
+    try:
+        kepco_service = KEPCODataService()
+        cost_gap = kepco_service.get_cost_gap_analysis()
+        return cost_gap
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"단가 격차 분석 실패: {str(e)}")
+
+@router.get("/regions-old")
+async def get_regional_power_data_old(year: int = Query(2023, description="조회 연도")) -> Dict[str, Any]:
+    """
+    지역별 전력 현황 데이터 조회 (기존 형식)
     """
     try:
         kepco_service = KEPCODataService()
@@ -25,7 +67,7 @@ async def get_regional_power_data(year: int = Query(2023, description="조회 �
         
         # API 응답 형식으로 변환
         regions = []
-        for region_name, region_data in data.items():
+        for region_name, region_data in data.get('regions', {}).items():
             if region_name == "총계":
                 continue
                 

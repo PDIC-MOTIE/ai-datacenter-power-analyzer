@@ -267,16 +267,16 @@ class KEPCODataService:
                         "overall_efficiency_score": float(row['종합효율점수']),
                         "infrastructure_score": float(row['인프라점수']),
                         "cost_efficiency_score": float(row['비용효율점수']),
-                        "datacenter_grade": row['데이터센터등급'],
+                        "datacenter_grade": str(row['데이터센터등급']),
                         "power_cost_krw_kwh": float(row['평균판매단가원kWh']),
                         "current_consumption_mw": round(current_mw, 1),
                         "supply_capacity_mw": round(supply_capacity, 1),
                         "remaining_capacity_mw": round(remaining_capacity, 1),
                         "load_increase_percent": round(load_increase_percent, 2),
-                        "capacity_adequate": remaining_capacity > required_power_mw,
+                        "capacity_adequate": bool(remaining_capacity > required_power_mw),
                         "grid_stability": "stable" if row['종합효율점수'] > 50 else "moderate",
-                        "recommended": row['종합효율점수'] >= 70,
-                        "annual_power_cost_krw": required_power_mw * 8760 * float(row['평균판매단가원kWh']),
+                        "recommended": bool(row['종합효율점수'] >= 70),
+                        "annual_power_cost_krw": float(required_power_mw * 8760 * float(row['평균판매단가원kWh'])),
                         "ranking": int(row['효율성순위'])
                     }
                     
