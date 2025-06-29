@@ -31,9 +31,6 @@ class KEPCORealDataService:
         단위: MWh (메가와트시)
         """
         
-        # 실제 환경에서는 공공데이터포털 API 키를 사용하여 다운로드
-        # 개발 환경에서는 샘플 데이터 생성
-        
         sample_data = self._generate_sample_kepco_data(year)
         
         # CSV 파일로 저장

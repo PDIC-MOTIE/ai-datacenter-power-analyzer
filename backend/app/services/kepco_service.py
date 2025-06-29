@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 import json
 import os
+from pathlib import Path
 
 class KEPCODataService:
     """한국전력공사 공공데이터 API 연동 서비스"""
@@ -13,33 +14,72 @@ class KEPCODataService:
         self.api_key = os.getenv("KEPCO_API_KEY", "sample_key")
         self.base_url = "https://bigdata.kepco.co.kr/openapi"
         
-        # 지역별 코드 매핑
+        # 실제 분석 데이터 파일 경로 (프로젝트 루트 기준)
+        self.data_dir = Path(__file__).parent.parent.parent.parent / "data" / "processed" / "kepco"
+        
+        # 지역별 코드 매핑 (실제 데이터에 맞게 업데이트)
         self.region_codes = {
-            "서울": "11",
-            "부산": "21", 
-            "대구": "22",
-            "인천": "23",
-            "광주": "24",
-            "대전": "25",
-            "울산": "26",
-            "경기": "31",
-            "강원": "32",
-            "충북": "33",
-            "충남": "34",
-            "전북": "35",
-            "전남": "36",
-            "경북": "37",
-            "경남": "38",
-            "제주": "39",
-            "세종": "17"
+            "서울특별시": "11",
+            "부산광역시": "21", 
+            "대구광역시": "22",
+            "인천광역시": "23",
+            "광주광역시": "24",
+            "대전광역시": "25",
+            "울산광역시": "26",
+            "경기도": "31",
+            "강원특별자치도": "32",
+            "충청북도": "33",
+            "충청남도": "34",
+            "전라북도": "35",
+            "전라남도": "36",
+            "경상북도": "37",
+            "경상남도": "38",
+            "제주특별자치도": "39",
+            "세종특별자치시": "17"
         }
         
         # 캐시된 데이터 저장
         self.cached_data = {}
         self.cache_expiry = {}
         
-    def get_regional_power_consumption(self, year: int = 2023) -> Dict[str, Any]:
-        """시도별 전력판매량 데이터 조회"""
+        # 실제 분석 결과 로드
+        self._load_analysis_results()
+    
+    def _load_analysis_results(self):
+        """실제 분석 결과 파일들을 로드"""
+        try:
+            # 종합 분석 결과 로드
+            comprehensive_file = self.data_dir / "regional_power_comprehensive_analysis.csv"
+            if comprehensive_file.exists():
+                self.comprehensive_data = pd.read_csv(comprehensive_file, index_col=0, encoding='utf-8-sig')
+            
+            # 단가 격차 분석 결과 로드
+            cost_gap_file = self.data_dir / "power_cost_gap_analysis.csv"
+            if cost_gap_file.exists():
+                self.cost_gap_data = pd.read_csv(cost_gap_file, encoding='utf-8-sig')
+            
+            # 월별 원본 데이터 로드
+            monthly_file = self.data_dir / "processed_monthly_power_data.csv"
+            if monthly_file.exists():
+                self.monthly_data = pd.read_csv(monthly_file, encoding='utf-8-sig')
+                
+        except Exception as e:
+            print(f"Warning: Could not load analysis results: {e}")
+            # 분석 결과가 없을 때 빈 데이터프레임 생성
+            self.comprehensive_data = pd.DataFrame()
+            self.cost_gap_data = pd.DataFrame()
+            self.monthly_data = pd.DataFrame()
+            
+        # 데이터가 없으면 기본값으로 초기화
+        if not hasattr(self, 'comprehensive_data'):
+            self.comprehensive_data = pd.DataFrame()
+        if not hasattr(self, 'cost_gap_data'):
+            self.cost_gap_data = pd.DataFrame() 
+        if not hasattr(self, 'monthly_data'):
+            self.monthly_data = pd.DataFrame()
+        
+    def get_regional_power_consumption(self, year: int = 2024) -> Dict[str, Any]:
+        """시도별 전력판매량 데이터 조회 - 실제 분석 데이터 기반"""
         
         cache_key = f"regional_consumption_{year}"
         
@@ -48,18 +88,74 @@ class KEPCODataService:
             return self.cached_data[cache_key]
         
         try:
-            # 실제 API 호출 대신 시뮬레이션 데이터 반환
-            # (공모전 개발 환경에서는 API 키 제한으로 시뮬레이션 데이터 사용)
-            data = self._get_simulated_regional_data(year)
-            
-            # 캐시 저장
-            self._cache_data(cache_key, data)
-            
-            return data
-            
+            if not self.comprehensive_data.empty:
+                # 실제 분석 데이터 사용
+                regional_data = {}
+                for region in self.comprehensive_data.index:
+                    row = self.comprehensive_data.loc[region]
+                    regional_data[region] = {
+                        "region_name": region,
+                        "current_consumption_mwh": float(row['사용량kWh']) / 1000,  # kWh to MWh
+                        "average_price_krw_kwh": float(row['평균판매단가원kWh']),
+                        "monthly_cost_krw": float(row['전기요금원']),
+                        "usage_share_percent": float(row['사용량_비중_%']),
+                        "ranking": int(row['사용량_순위']),
+                        "infrastructure_score": float(row['인프라점수']),
+                        "cost_efficiency_score": float(row['비용효율점수']),
+                        "overall_efficiency_score": float(row['종합효율점수']),
+                        "datacenter_grade": row['데이터센터등급'],
+                        "supply_capacity_mwh": float(row['사용량kWh']) / 1000 * 1.2,  # 20% 여유 가정
+                        "grid_stability": "stable" if row['종합효율점수'] > 50 else "moderate"
+                    }
+                
+                result = {
+                    "status": "success",
+                    "year": year,
+                    "total_regions": len(regional_data),
+                    "data_source": "KEPCO_real_analysis",
+                    "last_updated": datetime.now().isoformat(),
+                    "regions": regional_data
+                }
+            else:
+                # 백업 시뮬레이션 데이터
+                result = self._get_simulated_regional_data(year)
+                
         except Exception as e:
-            # API 오류 시 기본 시뮬레이션 데이터 반환
-            return self._get_simulated_regional_data(year)
+            print(f"Error loading regional data: {e}")
+            result = self._get_simulated_regional_data(year)
+        
+        # 캐시 저장
+        self._cache_data(cache_key, result)
+        return result
+    
+    def _get_simulated_regional_data(self, year: int) -> Dict[str, Any]:
+        """백업용 시뮬레이션 데이터"""
+        # 기본 시뮬레이션 데이터 반환
+        return {
+            "status": "success",
+            "year": year,
+            "total_regions": 17,
+            "data_source": "simulation",
+            "last_updated": datetime.now().isoformat(),
+            "regions": {
+                "서울특별시": {
+                    "region_name": "서울특별시",
+                    "current_consumption_mwh": 180000,
+                    "average_price_krw_kwh": 148.24,
+                    "monthly_cost_krw": 26663425246,
+                    "supply_capacity_mwh": 216000,
+                    "grid_stability": "stable"
+                },
+                "경기도": {
+                    "region_name": "경기도", 
+                    "current_consumption_mwh": 362000,
+                    "average_price_krw_kwh": 149.58,
+                    "monthly_cost_krw": 54257388598,
+                    "supply_capacity_mwh": 434000,
+                    "grid_stability": "stable"
+                }
+            }
+        }
     
     def get_power_plant_data(self) -> Dict[str, Any]:
         """발전소별 발전실적 데이터 조회"""
@@ -148,180 +244,100 @@ class KEPCODataService:
             "recommended_actions": self._get_recommendations(capacity_utilization, risk_level)
         }
     
-    def find_optimal_datacenter_locations(self, required_power_mw: float, top_n: int = 5) -> List[Dict[str, Any]]:
-        """데이터센터 최적 입지 추천"""
+    def find_optimal_datacenter_locations(self, required_power_mw: float = 100, top_n: int = 5) -> List[Dict[str, Any]]:
+        """데이터센터 최적 입지 추천 - 실제 분석 데이터 기반"""
         
-        regional_data = self.get_regional_power_consumption()
-        candidates = []
-        
-        for region, data in regional_data.items():
-            if region == "총계":
-                continue
+        try:
+            if not self.comprehensive_data.empty:
+                # 실제 분석 결과 사용
+                candidates = []
                 
-            analysis = self.analyze_datacenter_impact(region, required_power_mw)
+                for region in self.comprehensive_data.index:
+                    row = self.comprehensive_data.loc[region]
+                    
+                    # 데이터센터 영향 분석
+                    current_mw = float(row['사용량kWh']) / 1000 / 8760  # 연간 kWh -> 평균 MW
+                    supply_capacity = current_mw * 1.2  # 20% 여유 가정
+                    
+                    remaining_capacity = supply_capacity - current_mw
+                    load_increase_percent = (required_power_mw / current_mw) * 100 if current_mw > 0 else 0
+                    
+                    candidate = {
+                        "region": region,
+                        "overall_efficiency_score": float(row['종합효율점수']),
+                        "infrastructure_score": float(row['인프라점수']),
+                        "cost_efficiency_score": float(row['비용효율점수']),
+                        "datacenter_grade": row['데이터센터등급'],
+                        "power_cost_krw_kwh": float(row['평균판매단가원kWh']),
+                        "current_consumption_mw": round(current_mw, 1),
+                        "supply_capacity_mw": round(supply_capacity, 1),
+                        "remaining_capacity_mw": round(remaining_capacity, 1),
+                        "load_increase_percent": round(load_increase_percent, 2),
+                        "capacity_adequate": remaining_capacity > required_power_mw,
+                        "grid_stability": "stable" if row['종합효율점수'] > 50 else "moderate",
+                        "recommended": row['종합효율점수'] >= 70,
+                        "annual_power_cost_krw": required_power_mw * 8760 * float(row['평균판매단가원kWh']),
+                        "ranking": int(row['효율성순위'])
+                    }
+                    
+                    candidates.append(candidate)
+                
+                # 종합 효율성 점수로 정렬
+                candidates.sort(key=lambda x: x['overall_efficiency_score'], reverse=True)
+                
+                return candidates[:top_n]
             
-            # 점수 계산 (낮을수록 좋음)
-            score = 0
-            
-            # 전력 여유도 (40%)
-            if analysis["remaining_capacity_mw"] > required_power_mw * 2:
-                score += 20
-            elif analysis["remaining_capacity_mw"] > required_power_mw:
-                score += 40
             else:
-                score += 80
-            
-            # 전력 비용 (30%) - 산업용 전력요금 차이 반영
-            power_cost_score = self._get_regional_power_cost_score(region)
-            score += power_cost_score * 0.3
-            
-            # 냉각 효율성 (20%) - 기후 조건
-            cooling_score = self._get_cooling_efficiency_score(region)
-            score += cooling_score * 0.2
-            
-            # 접근성 (10%) - 인프라 수준
-            accessibility_score = self._get_accessibility_score(region)
-            score += accessibility_score * 0.1
-            
-            candidates.append({
-                "region": region,
-                "score": round(score, 1),
-                "power_cost_kwh": self._get_regional_power_cost(region),
-                "cooling_efficiency": self._get_cooling_efficiency(region),
-                "grid_stability": analysis["grid_stability_risk"],
-                "remaining_capacity_mw": analysis["remaining_capacity_mw"],
-                "infrastructure_upgrade_needed": analysis["infrastructure_upgrade_needed"],
-                "capacity_utilization_percent": analysis["capacity_utilization_percent"]
-            })
-        
-        # 점수 기준 정렬 (낮은 점수가 더 좋음)
-        candidates.sort(key=lambda x: x["score"])
-        
-        return candidates[:top_n]
+                # 백업 시뮬레이션 데이터
+                return self._get_simulated_optimal_locations(required_power_mw, top_n)
+                
+        except Exception as e:
+            print(f"Error in optimal location analysis: {e}")
+            return self._get_simulated_optimal_locations(required_power_mw, top_n)
     
-    def _get_simulated_regional_data(self, year: int) -> Dict[str, Any]:
-        """시뮬레이션 지역별 전력 데이터"""
-        
-        # 실제 한전 데이터 기반 시뮬레이션
-        return {
-            "서울": {
-                "total_consumption_mwh": 48500000,  # 48.5 TWh
-                "industrial_mwh": 8500000,
-                "residential_mwh": 15200000,
-                "commercial_mwh": 24800000,
-                "supply_capacity_mw": 7200,
-                "peak_demand_mw": 6800,
-                "power_cost_per_kwh": 0.13
+    def _get_simulated_optimal_locations(self, required_power_mw: float, top_n: int) -> List[Dict[str, Any]]:
+        """백업용 시뮬레이션 최적 입지 데이터"""
+        return [
+            {
+                "region": "세종특별자치시",
+                "overall_efficiency_score": 75.5,
+                "infrastructure_score": 65.0,
+                "cost_efficiency_score": 85.0,
+                "datacenter_grade": "A급 (우수)",
+                "power_cost_krw_kwh": 142.67,
+                "remaining_capacity_mw": 150.0,
+                "recommended": True
             },
-            "경기": {
-                "total_consumption_mwh": 82300000,  # 82.3 TWh
-                "industrial_mwh": 45600000,
-                "residential_mwh": 21400000,
-                "commercial_mwh": 15300000,
-                "supply_capacity_mw": 12500,
-                "peak_demand_mw": 11200,
-                "power_cost_per_kwh": 0.12
-            },
-            "충남": {
-                "total_consumption_mwh": 45200000,
-                "industrial_mwh": 35800000,
-                "residential_mwh": 5400000,
-                "commercial_mwh": 4000000,
-                "supply_capacity_mw": 15800,  # 화력발전소 집중
-                "peak_demand_mw": 8200,
-                "power_cost_per_kwh": 0.10
-            },
-            "전남": {
-                "total_consumption_mwh": 42600000,
-                "industrial_mwh": 37200000,
-                "residential_mwh": 3200000,
-                "commercial_mwh": 2200000,
-                "supply_capacity_mw": 14500,
-                "peak_demand_mw": 7800,
-                "power_cost_per_kwh": 0.09
-            },
-            "경북": {
-                "total_consumption_mwh": 38900000,
-                "industrial_mwh": 31200000,
-                "residential_mwh": 4700000,
-                "commercial_mwh": 3000000,
-                "supply_capacity_mw": 18200,  # 원자력발전소
-                "peak_demand_mw": 7200,
-                "power_cost_per_kwh": 0.08
+            {
+                "region": "대전광역시", 
+                "overall_efficiency_score": 72.3,
+                "infrastructure_score": 70.0,
+                "cost_efficiency_score": 78.0,
+                "datacenter_grade": "A급 (우수)",
+                "power_cost_krw_kwh": 146.46,
+                "remaining_capacity_mw": 120.0,
+                "recommended": True
             }
-        }
+        ][:top_n]
     
-    def _get_regional_power_cost(self, region: str) -> float:
-        """지역별 전력 단가 (USD/kWh)"""
-        cost_map = {
-            "서울": 0.13, "경기": 0.12, "인천": 0.12,
-            "충남": 0.10, "충북": 0.11, "전남": 0.09,
-            "전북": 0.10, "경북": 0.08, "경남": 0.09,
-            "부산": 0.11, "대구": 0.11, "광주": 0.10,
-            "대전": 0.11, "울산": 0.09, "강원": 0.12,
-            "제주": 0.15, "세종": 0.11
-        }
-        return cost_map.get(region, 0.11)
-    
-    def _get_regional_power_cost_score(self, region: str) -> float:
-        """지역별 전력비용 점수 (0-100, 낮을수록 좋음)"""
-        cost = self._get_regional_power_cost(region)
-        # 0.08~0.15 범위를 0~100 점수로 변환
-        return ((cost - 0.08) / (0.15 - 0.08)) * 100
-    
-    def _get_cooling_efficiency(self, region: str) -> float:
-        """지역별 냉각 효율성 (PUE 계수)"""
-        efficiency_map = {
-            "강원": 1.15, "경북": 1.20, "충북": 1.25,
-            "전북": 1.25, "충남": 1.25, "경기": 1.30,
-            "전남": 1.30, "경남": 1.30, "서울": 1.35,
-            "인천": 1.30, "대전": 1.30, "대구": 1.35,
-            "부산": 1.40, "울산": 1.35, "광주": 1.35,
-            "제주": 1.20, "세종": 1.30
-        }
-        return efficiency_map.get(region, 1.30)
-    
-    def _get_cooling_efficiency_score(self, region: str) -> float:
-        """냉각 효율성 점수 (0-100, 낮을수록 좋음)"""
-        pue = self._get_cooling_efficiency(region)
-        # 1.15~1.40 범위를 0~100 점수로 변환
-        return ((pue - 1.15) / (1.40 - 1.15)) * 100
-    
-    def _get_accessibility_score(self, region: str) -> float:
-        """접근성 점수 (0-100, 낮을수록 좋음)"""
-        accessibility_map = {
-            "서울": 10, "경기": 15, "인천": 20,
-            "대전": 25, "대구": 30, "부산": 25,
-            "광주": 35, "울산": 30, "충남": 40,
-            "충북": 45, "전남": 50, "전북": 45,
-            "경북": 40, "경남": 35, "강원": 60,
-            "제주": 80, "세종": 30
-        }
-        return accessibility_map.get(region, 50)
-    
-    def _get_recommendations(self, capacity_utilization: float, risk_level: str) -> List[str]:
-        """용량 사용률에 따른 권장사항"""
-        recommendations = []
-        
-        if capacity_utilization > 90:
-            recommendations.extend([
-                "긴급 전력 인프라 확충 필요",
-                "인근 지역 전력망 연계 강화 검토",
-                "데이터센터 규모 축소 권장"
-            ])
-        elif capacity_utilization > 80:
-            recommendations.extend([
-                "중장기 전력 인프라 확충 계획 수립",
-                "피크 시간대 전력 사용 분산 전략 필요",
-                "재생에너지 연계 검토"
-            ])
-        else:
-            recommendations.extend([
-                "현재 전력 인프라로 수용 가능",
-                "향후 확장성 고려한 계획적 개발 권장"
-            ])
-        
-        return recommendations
+    def get_cost_gap_analysis(self) -> Dict[str, Any]:
+        """전력단가 지역별 격차 분석 결과"""
+        try:
+            if not self.cost_gap_data.empty:
+                return self.cost_gap_data.iloc[0].to_dict()
+            else:
+                return {
+                    "최고단가_지역": "인천광역시",
+                    "최고단가_금액": 154.52,
+                    "최저단가_지역": "세종특별자치시", 
+                    "최저단가_금액": 142.67,
+                    "평균단가": 148.5,
+                    "단가격차_원": 11.85,
+                    "단가격차_퍼센트": 8.3
+                }
+        except Exception as e:
+            print(f"Error loading cost gap analysis: {e}")
+            return {}
     
     def _is_cache_valid(self, cache_key: str) -> bool:
         """캐시 유효성 확인"""
