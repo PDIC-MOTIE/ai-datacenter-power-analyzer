@@ -13,4 +13,12 @@ export default defineConfig({
     port: 3000,
     host: true,
   },
+  optimizeDeps: {
+    exclude: ['@rollup/rollup-linux-x64-gnu']
+  },
+  build: {
+    rollupOptions: {
+      external: ['@rollup/rollup-linux-x64-gnu']
+    }
+  }
 })

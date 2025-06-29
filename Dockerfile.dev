@@ -1,10 +1,14 @@
 # 개발 환경용 통합 Dockerfile
 FROM python:3.11-slim
 
-# Node.js 설치
+# Node.js 설치 (네이티브 모듈 컴파일 도구 포함)
 RUN apt-get update && apt-get install -y \
     curl \
     gcc \
+    g++ \
+    make \
+    python3-dev \
+    build-essential \
     libpq-dev \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
@@ -33,7 +37,11 @@ EXPOSE 3000 8000
 # 스타트업 스크립트 생성
 RUN echo '#!/bin/bash\n\
 echo "🚀 Starting AI Datacenter Power Analyzer..."\n\
+echo "🔧 Installing frontend dependencies..."\n\
+cd /workspace/frontend && rm -rf node_modules package-lock.json && npm install\n\
+echo "🌐 Starting backend..."\n\
 cd /workspace/backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload &\n\
+echo "⚡ Starting frontend..."\n\
 cd /workspace/frontend && npm run dev -- --host 0.0.0.0 --port 3000 &\n\
 wait' > /start.sh && chmod +x /start.sh
 

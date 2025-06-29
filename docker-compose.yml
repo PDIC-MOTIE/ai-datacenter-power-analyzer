@@ -16,6 +16,7 @@ services:
     volumes:
       - .:/workspace
       - /workspace/node_modules
+      - /workspace/frontend/node_modules
       - /workspace/backend/__pycache__
     working_dir: /workspace
     command: >
