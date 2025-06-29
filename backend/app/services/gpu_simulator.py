@@ -193,7 +193,7 @@ class GPUWorkloadSimulator:
         
         # GPU 사양 가져오기
         gpu_spec = self.gpu_specifications[gpu_type]
-        base_tdp = config.get('custom_tdp', gpu_spec.tdp_watts)
+        base_tdp = config.get('custom_tdp') or gpu_spec.tdp_watts
         
         # 워크로드별 전력 효율성 계산
         power_efficiency = self._calculate_power_efficiency(
