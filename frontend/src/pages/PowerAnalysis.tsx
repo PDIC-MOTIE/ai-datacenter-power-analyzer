@@ -79,10 +79,12 @@ export function PowerAnalysis() {
     queryFn: () => powerAnalysisApi.getPowerCostGap(),
   });
 
-  const regions = regionalData?.regions ? Object.entries(regionalData.regions).map(([key, value]) => ({
-    ...value as RegionData,
-    region_name: key
-  })) : [];
+  const regions = regionalData?.regions ? Object.entries(regionalData.regions)
+    .map(([key, value]) => ({
+      ...value as RegionData,
+      region_name: key
+    }))
+    .filter(region => region.current_consumption_mwh !== null && region.usage_share_percent !== null) : [];
 
   const handleRegionSelect = (regionName: string) => {
     setSelectedRegion(regionName);
@@ -276,16 +278,16 @@ export function PowerAnalysis() {
                           </span>
                         </div>
                         <div className="text-sm text-gray-600 mt-1">
-                          <div>사용량: {(region.current_consumption_mwh / 1000).toFixed(1)}k MWh</div>
-                          <div>점유율: {region.usage_share_percent.toFixed(1)}%</div>
+                          <div>사용량: {region.current_consumption_mwh ? (region.current_consumption_mwh / 1000).toFixed(1) : '0.0'}k MWh</div>
+                          <div>점유율: {region.usage_share_percent ? region.usage_share_percent.toFixed(1) : '0.0'}%</div>
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="text-lg font-bold text-gray-900">
-                          {region.average_price_krw_kwh.toFixed(1)}원/kWh
+                          {region.average_price_krw_kwh ? region.average_price_krw_kwh.toFixed(1) : '0.0'}원/kWh
                         </div>
-                        <div className={`text-sm font-medium ${getEfficiencyColor(region.overall_efficiency_score)}`}>
-                          효율성: {region.overall_efficiency_score.toFixed(1)}점
+                        <div className={`text-sm font-medium ${getEfficiencyColor(region.overall_efficiency_score || 0)}`}>
+                          효율성: {region.overall_efficiency_score ? region.overall_efficiency_score.toFixed(1) : '0.0'}점
                         </div>
                       </div>
                     </div>
@@ -395,28 +397,28 @@ export function PowerAnalysis() {
                     <div className="bg-blue-50 p-4 rounded-lg">
                       <h4 className="font-semibold text-blue-800 mb-2">인프라 현황</h4>
                       <div className="space-y-2 text-sm">
-                        <div>전력 사용량: {(region.current_consumption_mwh / 1000).toFixed(1)}k MWh</div>
-                        <div>공급 여력: {(region.supply_capacity_mwh / 1000).toFixed(1)}k MWh</div>
-                        <div>인프라 점수: {region.infrastructure_score.toFixed(1)}점</div>
-                        <div>전국 순위: #{region.ranking}</div>
+                        <div>전력 사용량: {region.current_consumption_mwh ? (region.current_consumption_mwh / 1000).toFixed(1) : '0.0'}k MWh</div>
+                        <div>공급 여력: {region.supply_capacity_mwh ? (region.supply_capacity_mwh / 1000).toFixed(1) : '0.0'}k MWh</div>
+                        <div>인프라 점수: {region.infrastructure_score ? region.infrastructure_score.toFixed(1) : '0.0'}점</div>
+                        <div>전국 순위: #{region.ranking || 'N/A'}</div>
                       </div>
                     </div>
                     <div className="bg-green-50 p-4 rounded-lg">
                       <h4 className="font-semibold text-green-800 mb-2">경제성 분석</h4>
                       <div className="space-y-2 text-sm">
-                        <div>전력 단가: {region.average_price_krw_kwh.toFixed(2)}원/kWh</div>
-                        <div>월 전력비: {(region.monthly_cost_krw / 1e8).toFixed(1)}억원</div>
-                        <div>비용 효율: {region.cost_efficiency_score.toFixed(1)}점</div>
-                        <div>점유율: {region.usage_share_percent.toFixed(1)}%</div>
+                        <div>전력 단가: {region.average_price_krw_kwh ? region.average_price_krw_kwh.toFixed(2) : '0.00'}원/kWh</div>
+                        <div>월 전력비: {region.monthly_cost_krw ? (region.monthly_cost_krw / 1e8).toFixed(1) : '0.0'}억원</div>
+                        <div>비용 효율: {region.cost_efficiency_score ? region.cost_efficiency_score.toFixed(1) : '0.0'}점</div>
+                        <div>점유율: {region.usage_share_percent ? region.usage_share_percent.toFixed(1) : '0.0'}%</div>
                       </div>
                     </div>
                     <div className="bg-purple-50 p-4 rounded-lg">
                       <h4 className="font-semibold text-purple-800 mb-2">종합 평가</h4>
                       <div className="space-y-2 text-sm">
-                        <div>종합 점수: {region.overall_efficiency_score.toFixed(1)}점</div>
-                        <div>등급: {region.datacenter_grade}</div>
-                        <div>안정성: {region.grid_stability}</div>
-                        <div>추천 여부: {region.overall_efficiency_score >= 70 ? '✅ 추천' : '⚠️ 검토 필요'}</div>
+                        <div>종합 점수: {region.overall_efficiency_score ? region.overall_efficiency_score.toFixed(1) : '0.0'}점</div>
+                        <div>등급: {region.datacenter_grade || 'N/A'}</div>
+                        <div>안정성: {region.grid_stability || 'unknown'}</div>
+                        <div>추천 여부: {(region.overall_efficiency_score || 0) >= 70 ? '✅ 추천' : '⚠️ 검토 필요'}</div>
                       </div>
                     </div>
                   </div>
