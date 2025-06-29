@@ -21,6 +21,18 @@ class GPUWorkloadSimulator:
     def _load_gpu_specifications(self) -> Dict[GPUType, GPUSpecification]:
         """NVIDIA 공식 GPU 사양 데이터"""
         return {
+            GPUType.H200: GPUSpecification(
+                name="NVIDIA H200",
+                architecture="Hopper",
+                tdp_watts=700,
+                cuda_cores=16896,
+                tensor_cores=456,
+                memory_gb=141,  # HBM3e
+                memory_bandwidth="4.8 TB/s",
+                ai_performance_tops=1600,  # FP8
+                release_year=2024,
+                compute_capability="9.0"
+            ),
             GPUType.H100: GPUSpecification(
                 name="NVIDIA H100",
                 architecture="Hopper",
@@ -45,6 +57,30 @@ class GPUWorkloadSimulator:
                 release_year=2020,
                 compute_capability="8.0"
             ),
+            GPUType.L40S: GPUSpecification(
+                name="NVIDIA L40S",
+                architecture="Ada Lovelace",
+                tdp_watts=350,
+                cuda_cores=18176,
+                tensor_cores=568,
+                memory_gb=48,
+                memory_bandwidth="864 GB/s",
+                ai_performance_tops=733,  # FP8
+                release_year=2023,
+                compute_capability="8.9"
+            ),
+            GPUType.L40: GPUSpecification(
+                name="NVIDIA L40",
+                architecture="Ada Lovelace",
+                tdp_watts=300,
+                cuda_cores=18176,
+                tensor_cores=568,
+                memory_gb=48,
+                memory_bandwidth="864 GB/s",
+                ai_performance_tops=362,  # FP16
+                release_year=2023,
+                compute_capability="8.9"
+            ),
             GPUType.L4: GPUSpecification(
                 name="NVIDIA L4",
                 architecture="Ada Lovelace",
@@ -68,6 +104,30 @@ class GPUWorkloadSimulator:
                 ai_performance_tops=125,  # FP16
                 release_year=2017,
                 compute_capability="7.0"
+            ),
+            GPUType.T4: GPUSpecification(
+                name="NVIDIA T4",
+                architecture="Turing",
+                tdp_watts=70,
+                cuda_cores=2560,
+                tensor_cores=320,
+                memory_gb=16,
+                memory_bandwidth="300 GB/s",
+                ai_performance_tops=130,  # INT8
+                release_year=2018,
+                compute_capability="7.5"
+            ),
+            GPUType.A30: GPUSpecification(
+                name="NVIDIA A30",
+                architecture="Ampere",
+                tdp_watts=165,
+                cuda_cores=3584,
+                tensor_cores=224,
+                memory_gb=24,
+                memory_bandwidth="933 GB/s",
+                ai_performance_tops=330,  # BF16
+                release_year=2021,
+                compute_capability="8.0"
             ),
             GPUType.RTX_4090: GPUSpecification(
                 name="NVIDIA RTX 4090",

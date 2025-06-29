@@ -5,11 +5,16 @@ from enum import Enum
 
 class GPUType(str, Enum):
     """지원되는 GPU 타입"""
-    H100 = "H100"
-    A100 = "A100"
-    L4 = "L4"
-    V100 = "V100"
-    RTX_4090 = "RTX_4090"
+    H200 = "H200"  # 2024 최신
+    H100 = "H100"  # 플래그십
+    A100 = "A100"  # 검증된 데이터센터 GPU
+    L40S = "L40S"  # AI + 그래픽스
+    L40 = "L40"    # 멀티미디어 특화
+    L4 = "L4"      # 추론 특화
+    V100 = "V100"  # 레거시
+    T4 = "T4"      # 추론 최적화
+    A30 = "A30"    # 엔터프라이즈
+    RTX_4090 = "RTX_4090"  # 개발/프로토타이핑
 
 
 class WorkloadType(str, Enum):
