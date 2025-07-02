@@ -13,78 +13,142 @@ import {
   RefreshCw
 } from 'lucide-react';
 
-interface GpuConfig {
+interface GpuQuantity {
   gpu_type: string;
+  quantity: number;
+  utilization: number;
   custom_tdp?: number;
-  workload_type: string;
+}
+
+interface GpuConfig {
+  gpu_configurations: GpuQuantity[];
   duration_hours: number;
-  utilization_rate: number;
-  target_temperature?: number;
+}
+
+interface SingleGPUResult {
+  gpu_type: string;
+  quantity: number;
+  hourly_power_kw: number;
+  total_energy_kwh: number;
+  cost_estimate_usd: number;
+  efficiency_score: number;
+  carbon_footprint_kg: number;
+  utilization_actual: number;
+  temperature_estimate_c?: number;
 }
 
 interface SimulationResult {
-  average_power_watts: number;
+  gpu_results: SingleGPUResult[];
+  total_hourly_power_kw: number;
   total_energy_kwh: number;
-  estimated_cost_krw: number;
-  peak_power_watts: number;
-  efficiency_score: number;
-  recommendations: string[];
+  total_cost_estimate_usd: number;
+  total_carbon_footprint_kg: number;
+  average_efficiency_score: number;
+  total_gpu_count: number;
 }
 
 const GPU_TYPES = [
   { value: 'H200', label: 'NVIDIA H200 (141GB HBM3e)', tdp: 700 },
   { value: 'H100', label: 'NVIDIA H100 (80GB HBM3)', tdp: 700 },
   { value: 'A100', label: 'NVIDIA A100 (80GB HBM2e)', tdp: 400 },
-  { value: 'A100_40GB', label: 'NVIDIA A100 (40GB HBM2e)', tdp: 400 },
+  { value: 'L40S', label: 'NVIDIA L40S (48GB)', tdp: 350 },
+  { value: 'L40', label: 'NVIDIA L40 (48GB)', tdp: 300 },
+  { value: 'L4', label: 'NVIDIA L4 (24GB)', tdp: 72 },
   { value: 'V100', label: 'NVIDIA V100 (32GB HBM2)', tdp: 300 },
+  { value: 'T4', label: 'NVIDIA T4 (16GB)', tdp: 70 },
+  { value: 'A30', label: 'NVIDIA A30 (24GB)', tdp: 165 },
   { value: 'RTX_4090', label: 'NVIDIA RTX 4090', tdp: 450 },
-];
-
-const WORKLOAD_TYPES = [
-  { value: 'training', label: 'AI 모델 훈련', description: '딥러닝 모델 학습 워크로드' },
-  { value: 'inference', label: 'AI 추론', description: '실시간 추론 및 예측' },
-  { value: 'hpc', label: 'HPC 연산', description: '과학 계산 및 시뮬레이션' },
-  { value: 'rendering', label: '렌더링', description: '3D 렌더링 및 그래픽 처리' },
 ];
 
 export function GpuSimulation() {
   const [config, setConfig] = useState<GpuConfig>({
-    gpu_type: 'H100',
-    workload_type: 'training',
+    gpu_configurations: [
+      { gpu_type: 'H100', quantity: 4, utilization: 85 },
+      { gpu_type: 'A100', quantity: 8, utilization: 80 }
+    ],
     duration_hours: 24,
-    utilization_rate: 0.8,
   });
   
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const selectedGpu = GPU_TYPES.find(gpu => gpu.value === config.gpu_type);
+  const addGpuConfiguration = () => {
+    setConfig({
+      ...config,
+      gpu_configurations: [
+        ...config.gpu_configurations,
+        { gpu_type: 'H100', quantity: 1, utilization: 85 }
+      ]
+    });
+  };
+
+  const removeGpuConfiguration = (index: number) => {
+    setConfig({
+      ...config,
+      gpu_configurations: config.gpu_configurations.filter((_, i) => i !== index)
+    });
+  };
+
+  const updateGpuConfiguration = (index: number, field: keyof GpuQuantity, value: string | number) => {
+    const updated = [...config.gpu_configurations];
+    updated[index] = { ...updated[index], [field]: value };
+    setConfig({ ...config, gpu_configurations: updated });
+  };
 
   const handleSimulation = async () => {
     setLoading(true);
     try {
-      // API 호출 시뮬레이션 (실제로는 백엔드 연동)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // 모의 결과 생성
-      const basepower = selectedGpu?.tdp || 400;
-      const avgPower = basepower * config.utilization_rate;
-      const totalEnergy = (avgPower * config.duration_hours) / 1000;
-      
-      setResult({
-        average_power_watts: Math.round(avgPower),
-        total_energy_kwh: Math.round(totalEnergy * 100) / 100,
-        estimated_cost_krw: Math.round(totalEnergy * 120), // 120원/kWh 가정
-        peak_power_watts: Math.round(basepower * 0.95),
-        efficiency_score: Math.round((1 - config.utilization_rate * 0.3) * 100),
-        recommendations: [
-          '워크로드 스케줄링을 통해 15% 전력 절약 가능',
-          '쿨링 시스템 최적화로 5% 효율성 향상',
-          '피크 시간대 회피로 전력 비용 20% 절감'
-        ]
+      const response = await fetch('/api/v1/gpu-simulation/simulate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          gpu_configurations: config.gpu_configurations,
+          duration_hours: config.duration_hours
+        }),
       });
+      
+      if (!response.ok) {
+        throw new Error('시뮬레이션 요청 실패');
+      }
+      
+      const data = await response.json();
+      setResult(data);
     } catch (error) {
       console.error('Simulation failed:', error);
+      // 폴백: 모의 결과 생성
+      const totalPower = config.gpu_configurations.reduce((sum, gpu) => {
+        const gpuSpec = GPU_TYPES.find(g => g.value === gpu.gpu_type);
+        return sum + (gpuSpec?.tdp || 400) * gpu.quantity * (gpu.utilization / 100);
+      }, 0);
+      
+      const totalEnergy = (totalPower * config.duration_hours) / 1000;
+      
+      setResult({
+        gpu_results: config.gpu_configurations.map(gpu => {
+          const gpuSpec = GPU_TYPES.find(g => g.value === gpu.gpu_type);
+          const power = (gpuSpec?.tdp || 400) * gpu.quantity * (gpu.utilization / 100);
+          const energy = (power * config.duration_hours) / 1000;
+          return {
+            gpu_type: gpu.gpu_type,
+            quantity: gpu.quantity,
+            hourly_power_kw: power / 1000,
+            total_energy_kwh: energy,
+            cost_estimate_usd: energy * 0.12,
+            efficiency_score: 85,
+            carbon_footprint_kg: energy * 0.4571,
+            utilization_actual: gpu.utilization,
+            temperature_estimate_c: 75
+          };
+        }),
+        total_hourly_power_kw: totalPower / 1000,
+        total_energy_kwh: totalEnergy,
+        total_cost_estimate_usd: totalEnergy * 0.12,
+        total_carbon_footprint_kg: totalEnergy * 0.4571,
+        average_efficiency_score: 85,
+        total_gpu_count: config.gpu_configurations.reduce((sum, gpu) => sum + gpu.quantity, 0)
+      });
     } finally {
       setLoading(false);
     }
@@ -112,49 +176,107 @@ export function GpuSimulation() {
                 <span>시뮬레이션 설정</span>
               </CardTitle>
               <CardDescription>
-                GPU 모델과 워크로드를 선택하세요
+                GPU 모델과 설정을 선택하세요
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* GPU Selection */}
+              {/* GPU Configurations */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  GPU 모델
-                </label>
-                <select
-                  value={config.gpu_type}
-                  onChange={(e) => setConfig({...config, gpu_type: e.target.value})}
-                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {GPU_TYPES.map(gpu => (
-                    <option key={gpu.value} value={gpu.value}>
-                      {gpu.label} ({gpu.tdp}W TDP)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Workload Type */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  워크로드 유형
-                </label>
-                <div className="space-y-2">
-                  {WORKLOAD_TYPES.map(workload => (
-                    <label key={workload.value} className="flex items-start space-x-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="workload"
-                        value={workload.value}
-                        checked={config.workload_type === workload.value}
-                        onChange={(e) => setConfig({...config, workload_type: e.target.value})}
-                        className="mt-1"
-                      />
-                      <div>
-                        <div className="font-medium text-sm">{workload.label}</div>
-                        <div className="text-xs text-gray-500">{workload.description}</div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    GPU 구성
+                  </label>
+                  <Button 
+                    type="button" 
+                    size="sm" 
+                    variant="outline"
+                    onClick={addGpuConfiguration}
+                  >
+                    + GPU 추가
+                  </Button>
+                </div>
+                
+                <div className="space-y-4">
+                  {config.gpu_configurations.map((gpu, index) => (
+                    <div key={index} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-medium text-sm">GPU #{index + 1}</span>
+                        {config.gpu_configurations.length > 1 && (
+                          <Button 
+                            type="button" 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => removeGpuConfiguration(index)}
+                          >
+                            제거
+                          </Button>
+                        )}
                       </div>
-                    </label>
+                      
+                      <div className="grid grid-cols-1 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            GPU 모델
+                          </label>
+                          <select
+                            value={gpu.gpu_type}
+                            onChange={(e) => updateGpuConfiguration(index, 'gpu_type', e.target.value)}
+                            className="w-full p-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          >
+                            {GPU_TYPES.map(gpuType => (
+                              <option key={gpuType.value} value={gpuType.value}>
+                                {gpuType.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              수량
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              value={gpu.quantity}
+                              onChange={(e) => updateGpuConfiguration(index, 'quantity', parseInt(e.target.value))}
+                              className="w-full p-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              사용률 (%)
+                            </label>
+                            <input
+                              type="number"
+                              min="10"
+                              max="100"
+                              value={gpu.utilization}
+                              onChange={(e) => updateGpuConfiguration(index, 'utilization', parseInt(e.target.value))}
+                              className="w-full p-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            커스텀 TDP (선택사항)
+                          </label>
+                          <input
+                            type="number"
+                            min="50"
+                            max="1000"
+                            placeholder={`기본값: ${GPU_TYPES.find(g => g.value === gpu.gpu_type)?.tdp}W`}
+                            value={gpu.custom_tdp || ''}
+                            onChange={(e) => updateGpuConfiguration(index, 'custom_tdp', e.target.value ? parseInt(e.target.value) : undefined)}
+                            className="w-full p-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -170,42 +292,6 @@ export function GpuSimulation() {
                   max="8760"
                   value={config.duration_hours}
                   onChange={(e) => setConfig({...config, duration_hours: parseInt(e.target.value)})}
-                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Utilization Rate */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  활용률 ({Math.round(config.utilization_rate * 100)}%)
-                </label>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1.0"
-                  step="0.1"
-                  value={config.utilization_rate}
-                  onChange={(e) => setConfig({...config, utilization_rate: parseFloat(e.target.value)})}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
-                  <span>10%</span>
-                  <span>100%</span>
-                </div>
-              </div>
-
-              {/* Custom TDP */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  사용자 정의 TDP (선택사항)
-                </label>
-                <input
-                  type="number"
-                  min="50"
-                  max="1000"
-                  placeholder={`기본값: ${selectedGpu?.tdp}W`}
-                  value={config.custom_tdp || ''}
-                  onChange={(e) => setConfig({...config, custom_tdp: e.target.value ? parseInt(e.target.value) : undefined})}
                   className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -243,9 +329,9 @@ export function GpuSimulation() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-2xl font-bold text-blue-600">
-                          {result.average_power_watts}W
+                          {result.total_hourly_power_kw.toFixed(1)}kW
                         </p>
-                        <p className="text-sm font-medium text-gray-600">평균 전력</p>
+                        <p className="text-sm font-medium text-gray-600">총 전력</p>
                       </div>
                       <Zap className="w-8 h-8 text-blue-500" />
                     </div>
@@ -257,7 +343,7 @@ export function GpuSimulation() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-2xl font-bold text-green-600">
-                          {result.total_energy_kwh}kWh
+                          {result.total_energy_kwh.toFixed(1)}kWh
                         </p>
                         <p className="text-sm font-medium text-gray-600">총 에너지</p>
                       </div>
@@ -271,7 +357,7 @@ export function GpuSimulation() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-2xl font-bold text-purple-600">
-                          ₩{result.estimated_cost_krw.toLocaleString()}
+                          ${result.total_cost_estimate_usd.toFixed(2)}
                         </p>
                         <p className="text-sm font-medium text-gray-600">예상 비용</p>
                       </div>
@@ -285,7 +371,7 @@ export function GpuSimulation() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-2xl font-bold text-orange-600">
-                          {result.efficiency_score}%
+                          {result.average_efficiency_score.toFixed(1)}%
                         </p>
                         <p className="text-sm font-medium text-gray-600">효율성 점수</p>
                       </div>
@@ -294,13 +380,72 @@ export function GpuSimulation() {
                   </CardContent>
                 </Card>
               </div>
+              
+              {/* GPU Results */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>GPU별 상세 결과</CardTitle>
+                  <CardDescription>
+                    각 GPU 유형별 전력 소모 및 비용 분석
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {result.gpu_results.map((gpu, index) => (
+                      <div key={index} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-semibold text-gray-900">
+                            {GPU_TYPES.find(g => g.value === gpu.gpu_type)?.label || gpu.gpu_type}
+                          </h3>
+                          <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                            {gpu.quantity}개
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div>
+                            <span className="text-gray-600">전력:</span>
+                            <span className="font-medium ml-1">{gpu.hourly_power_kw.toFixed(2)}kW</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">에너지:</span>
+                            <span className="font-medium ml-1">{gpu.total_energy_kwh.toFixed(2)}kWh</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">비용:</span>
+                            <span className="font-medium ml-1">${gpu.cost_estimate_usd.toFixed(2)}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">효율성:</span>
+                            <span className="font-medium ml-1">{gpu.efficiency_score.toFixed(1)}%</span>
+                          </div>
+                        </div>
+                        
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs text-gray-600">
+                            <div>
+                              <span>사용률: {gpu.utilization_actual}%</span>
+                            </div>
+                            <div>
+                              <span>예상 온도: {gpu.temperature_estimate_c?.toFixed(1) || 'N/A'}°C</span>
+                            </div>
+                            <div>
+                              <span>탄소 배출: {gpu.carbon_footprint_kg.toFixed(2)}kg</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
 
-              {/* Detailed Results */}
+              {/* Summary */}
               <Card>
                 <CardHeader>
                   <CardTitle>상세 분석 결과</CardTitle>
                   <CardDescription>
-                    선택한 GPU 구성에 대한 전력 소모 및 비용 분석
+                    전체 GPU 구성에 대한 전력 소모 및 비용 분석
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -309,16 +454,16 @@ export function GpuSimulation() {
                       <h3 className="font-semibold text-gray-900 mb-3">전력 사용량 분석</h3>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-gray-600">평균 전력:</span>
-                          <span className="font-medium">{result.average_power_watts}W</span>
+                          <span className="text-gray-600">총 GPU 수:</span>
+                          <span className="font-medium">{result.total_gpu_count}개</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">피크 전력:</span>
-                          <span className="font-medium">{result.peak_power_watts}W</span>
+                          <span className="text-gray-600">총 전력:</span>
+                          <span className="font-medium">{result.total_hourly_power_kw.toFixed(2)}kW</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">총 에너지:</span>
-                          <span className="font-medium">{result.total_energy_kwh}kWh</span>
+                          <span className="font-medium">{result.total_energy_kwh.toFixed(2)}kWh</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">실행 시간:</span>
@@ -328,50 +473,27 @@ export function GpuSimulation() {
                     </div>
                     
                     <div>
-                      <h3 className="font-semibold text-gray-900 mb-3">비용 분석</h3>
+                      <h3 className="font-semibold text-gray-900 mb-3">비용 및 환경 분석</h3>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">전력 비용:</span>
-                          <span className="font-medium">₩{result.estimated_cost_krw.toLocaleString()}</span>
+                          <span className="font-medium">${result.total_cost_estimate_usd.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">시간당 비용:</span>
-                          <span className="font-medium">₩{Math.round(result.estimated_cost_krw / config.duration_hours).toLocaleString()}</span>
+                          <span className="font-medium">${(result.total_cost_estimate_usd / config.duration_hours).toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">kWh당 단가:</span>
-                          <span className="font-medium">₩120</span>
+                          <span className="text-gray-600">탄소 배출:</span>
+                          <span className="font-medium">{result.total_carbon_footprint_kg.toFixed(2)}kg CO2</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">효율성 점수:</span>
-                          <span className="font-medium">{result.efficiency_score}%</span>
+                          <span className="font-medium">{result.average_efficiency_score.toFixed(1)}%</span>
                         </div>
                       </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Recommendations */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <Cpu className="w-5 h-5" />
-                    <span>최적화 제안</span>
-                  </CardTitle>
-                  <CardDescription>
-                    전력 효율성 향상을 위한 권장사항
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-3">
-                    {result.recommendations.map((rec, index) => (
-                      <li key={index} className="flex items-start space-x-3">
-                        <div className="w-2 h-2 bg-gradient-to-r from-blue-500 to-green-500 rounded-full mt-2" />
-                        <span className="text-sm text-gray-700">{rec}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </CardContent>
               </Card>
             </div>
@@ -383,7 +505,7 @@ export function GpuSimulation() {
                   시뮬레이션 준비 완료
                 </h3>
                 <p className="text-gray-500 mb-4">
-                  좌측에서 GPU 모델과 워크로드를 설정한 후 시뮬레이션을 실행하세요.
+                  좌측에서 GPU 모델과 설정을 선택한 후 시뮬레이션을 실행하세요.
                 </p>
                 <Button onClick={handleSimulation} disabled={loading}>
                   <Play className="w-4 h-4 mr-2" />
