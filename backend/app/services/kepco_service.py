@@ -125,7 +125,7 @@ class KEPCODataService:
                 # 실제 분석 데이터 사용하되 개선된 점수 적용
                 data = self.comprehensive_data.copy()
                 
-                # 개선된 점수 계산 (find_optimal_datacenter_locations와 동일한 로직)
+                # 개선된 점수 계산 (통합 분석과 동일한 최신 로직 적용)
                 usage_score = (data['사용량kWh'] / data['사용량kWh'].max() * 60).round(1)
                 share_score = data['사용량_비중_%'].apply(lambda x: 
                     40 if 5 <= x <= 15 else
@@ -133,22 +133,20 @@ class KEPCODataService:
                 ).round(1)
                 data['인프라점수_개선'] = (usage_score + share_score).round(1)
                 
-                min_cost = data['평균판매단가원kWh'].min()
-                max_cost = data['평균판매단가원kWh'].max()
-                cost_range = max_cost - min_cost
+                # 비용 효율성 점수 (통합 분석과 동일한 방식)
+                cost_score = data['평균판매단가원kWh'].apply(lambda x:
+                    max(0, min(100, (170 - x) * 5))  # 150원=100점, 170원=0점
+                ).round(1)
+                data['비용효율점수_개선'] = cost_score
                 
-                if cost_range > 0:
-                    relative_score = ((max_cost - data['평균판매단가원kWh']) / cost_range * 70).round(1)
-                    absolute_score = data['평균판매단가원kWh'].apply(lambda x:
-                        30 if x <= 150 else 25 if x <= 155 else 20 if x <= 160 else 10 if x <= 165 else 0
-                    )
-                    data['비용효율점수_개선'] = (relative_score + absolute_score).round(1)
-                else:
-                    data['비용효율점수_개선'] = 50.0
-                
+                # 고객수 밀도 보너스 (안정성 지표)
                 customer_bonus = (data['고객수'] / data['고객수'].max() * 10).round(1) if '고객수' in data.columns else 5.0
+                
+                # 종합 효율성 점수 (가중치: 인프라 50% + 비용 30% + 안정성 20%)
                 data['종합효율점수_개선'] = (
-                    data['인프라점수_개선'] * 0.4 + data['비용효율점수_개선'] * 0.5 + customer_bonus * 0.1
+                    data['인프라점수_개선'] * 0.5 + 
+                    data['비용효율점수_개선'] * 0.3 + 
+                    customer_bonus * 0.2
                 ).round(1)
                 
                 def get_improved_grade(score):
@@ -336,31 +334,20 @@ class KEPCODataService:
                 ).round(1)
                 data['인프라점수_개선'] = (usage_score + share_score).round(1)
                 
-                # 2. 비용 효율성 점수 (상대적 + 절대적 기준)
-                min_cost = data['평균판매단가원kWh'].min()
-                max_cost = data['평균판매단가원kWh'].max()
-                cost_range = max_cost - min_cost
+                # 2. 비용 효율성 점수 (통합 분석과 동일한 방식)
+                cost_score = data['평균판매단가원kWh'].apply(lambda x:
+                    max(0, min(100, (170 - x) * 5))  # 150원=100점, 170원=0점
+                ).round(1)
+                data['비용효율점수_개선'] = cost_score
                 
-                if cost_range > 0:
-                    relative_score = ((max_cost - data['평균판매단가원kWh']) / cost_range * 70).round(1)
-                    absolute_score = data['평균판매단가원kWh'].apply(lambda x:
-                        30 if x <= 150 else
-                        25 if x <= 155 else  
-                        20 if x <= 160 else
-                        10 if x <= 165 else 0
-                    )
-                    data['비용효율점수_개선'] = (relative_score + absolute_score).round(1)
-                else:
-                    data['비용효율점수_개선'] = 50.0
-                
-                # 3. 고객수 밀도 보너스
+                # 3. 고객수 밀도 보너스 (안정성 지표)
                 customer_bonus = (data['고객수'] / data['고객수'].max() * 10).round(1) if '고객수' in data.columns else 5.0
                 
-                # 4. 종합 효율성 점수 (개선된 방식)
+                # 4. 종합 효율성 점수 (가중치: 인프라 50% + 비용 30% + 안정성 20%)
                 data['종합효율점수_개선'] = (
-                    data['인프라점수_개선'] * 0.4 +
-                    data['비용효율점수_개선'] * 0.5 +
-                    customer_bonus * 0.1
+                    data['인프라점수_개선'] * 0.5 +
+                    data['비용효율점수_개선'] * 0.3 +
+                    customer_bonus * 0.2
                 ).round(1)
                 
                 # 5. 개선된 등급 분류
