@@ -3,7 +3,7 @@ from typing import Dict, Any, List
 from pydantic import BaseModel
 
 from app.services.kepco_service import KEPCODataService
-from app.services.gpu_simulator import GPUPowerSimulator
+from app.services.gpu_simulator import GPUWorkloadSimulator
 
 router = APIRouter()
 
@@ -21,7 +21,7 @@ async def get_regional_gpu_efficiency() -> Dict[str, Any]:
     """
     try:
         kepco_service = KEPCODataService()
-        gpu_simulator = GPUPowerSimulator()
+        gpu_simulator = GPUWorkloadSimulator()
         
         # 지역별 전력 데이터 가져오기
         regional_data = kepco_service.get_regional_power_consumption()
@@ -47,7 +47,7 @@ async def get_regional_gpu_efficiency() -> Dict[str, Any]:
                 for workload in workload_types:
                     try:
                         # GPU 시뮬레이션 실행
-                        sim_result = gpu_simulator.simulate_power_consumption({
+                        sim_result = gpu_simulator.simulate_workload_power({
                             "gpu_type": gpu_model,
                             "workload_type": workload,
                             "duration_hours": 8760,  # 1년
@@ -65,8 +65,8 @@ async def get_regional_gpu_efficiency() -> Dict[str, Any]:
                             "annual_power_kwh": sim_result["total_energy_kwh"],
                             "annual_cost_krw": round(annual_cost),
                             "efficiency_score": round(efficiency_score, 1),
-                            "peak_power_watts": sim_result["peak_power_watts"],
-                            "average_power_watts": sim_result["average_power_watts"]
+                            "peak_power_watts": sim_result.get("peak_power_watts", 0),
+                            "average_power_watts": sim_result.get("hourly_power_kw", 0) * 1000
                         }
                         
                     except Exception as e:
@@ -102,13 +102,13 @@ async def get_optimal_datacenter_config(request: IntegratedAnalysisRequest) -> D
     """
     try:
         kepco_service = KEPCODataService()
-        gpu_simulator = GPUPowerSimulator()
+        gpu_simulator = GPUWorkloadSimulator()
         
         # 지역별 전력 데이터
         regional_data = kepco_service.get_regional_power_consumption()
         
         # GPU 시뮬레이션
-        sim_result = gpu_simulator.simulate_power_consumption({
+        sim_result = gpu_simulator.simulate_workload_power({
             "gpu_type": request.gpu_type,
             "workload_type": request.workload_type,
             "duration_hours": request.duration_hours,
@@ -119,7 +119,7 @@ async def get_optimal_datacenter_config(request: IntegratedAnalysisRequest) -> D
         gpu_annual_kwh = sim_result["total_energy_kwh"]
         
         # 데이터센터 규모 계산 (100MW 기준)
-        gpu_power_kw = sim_result["average_power_watts"] / 1000
+        gpu_power_kw = sim_result["hourly_power_kw"]
         estimated_gpu_count = int((request.datacenter_capacity_mw * 1000) / gpu_power_kw)
         
         regional_recommendations = []
@@ -169,8 +169,8 @@ async def get_optimal_datacenter_config(request: IntegratedAnalysisRequest) -> D
             },
             "gpu_simulation": {
                 "annual_kwh_per_gpu": gpu_annual_kwh,
-                "average_power_watts": sim_result["average_power_watts"],
-                "peak_power_watts": sim_result["peak_power_watts"],
+                "average_power_watts": sim_result["hourly_power_kw"] * 1000,
+                "peak_power_watts": sim_result.get("peak_power_watts", 0),
                 "estimated_gpu_count": estimated_gpu_count
             },
             "regional_recommendations": regional_recommendations[:10]
