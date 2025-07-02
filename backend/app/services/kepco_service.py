@@ -125,38 +125,32 @@ class KEPCODataService:
                 # 실제 분석 데이터 사용하되 개선된 점수 적용
                 data = self.comprehensive_data.copy()
                 
-                # 개선된 점수 계산 (통합 분석과 동일한 최신 로직 적용)
-                usage_score = (data['사용량kWh'] / data['사용량kWh'].max() * 60).round(1)
-                share_score = data['사용량_비중_%'].apply(lambda x: 
-                    40 if 5 <= x <= 15 else
-                    max(0, 40 - abs(x - 10) * 2) if x < 5 or x > 15 else 0
-                ).round(1)
-                data['인프라점수_개선'] = (usage_score + share_score).round(1)
+                # 전문적인 데이터센터 입지 평가 모델 (DCF: Datacenter Feasibility Score)
+                # 1. 전력비용 경쟁력 지수 (0-100점) - 가중치 60%
+                avg_price = data['평균판매단가원kWh'].mean()
+                std_price = data['평균판매단가원kWh'].std()
+                cost_competitiveness = ((avg_price - data['평균판매단가원kWh']) / std_price * 20 + 50).clip(0, 100).round(1)
                 
-                # 비용 효율성 점수 (통합 분석과 동일한 방식)
-                cost_score = data['평균판매단가원kWh'].apply(lambda x:
-                    max(0, min(100, (170 - x) * 5))  # 150원=100점, 170원=0점
-                ).round(1)
-                data['비용효율점수_개선'] = cost_score
+                # 2. 전력 인프라 안정성 지수 (0-100점) - 가중치 40%
+                # 사용량 규모 (전국 대비 비중)
+                usage_scale = (data['사용량_비중_%'] * 10).clip(0, 100).round(1)
+                # 고객밀도 (안정적 수요 기반)
+                customer_density = ((data['고객수'] / data['고객수'].max()) * 100).round(1) if '고객수' in data.columns else 50.0
+                infrastructure_stability = ((usage_scale + customer_density) / 2).round(1)
                 
-                # 고객수 밀도 보너스 (안정성 지표)
-                customer_bonus = (data['고객수'] / data['고객수'].max() * 10).round(1) if '고객수' in data.columns else 5.0
-                
-                # 종합 효율성 점수 (가중치: 인프라 50% + 비용 30% + 안정성 20%)
-                data['종합효율점수_개선'] = (
-                    data['인프라점수_개선'] * 0.5 + 
-                    data['비용효율점수_개선'] * 0.3 + 
-                    customer_bonus * 0.2
+                # 3. 종합 DCF 점수 계산
+                data['DCF_점수'] = (
+                    cost_competitiveness * 0.6 + 
+                    infrastructure_stability * 0.4
                 ).round(1)
                 
-                def get_improved_grade(score):
-                    if score >= 75: return 'S급 (최적)'
-                    elif score >= 65: return 'A급 (우수)'
-                    elif score >= 55: return 'B급 (양호)'
-                    elif score >= 45: return 'C급 (보통)'
-                    else: return 'D급 (부적합)'
+                # 4. 전문적 등급 분류 (정규분포 기반)
+                def get_dcf_grade(score):
+                    if score >= 70: return 'Grade A (우수)'      # 상위 15%
+                    elif score >= 50: return 'Grade B (적합)'    # 상위 70%  
+                    else: return 'Grade C (검토필요)'             # 하위 15%
                 
-                data['데이터센터등급_개선'] = data['종합효율점수_개선'].apply(get_improved_grade)
+                data['데이터센터등급_개선'] = data['DCF_점수'].apply(get_dcf_grade)
                 
                 regional_data = {}
                 for region in data.index:
@@ -173,12 +167,12 @@ class KEPCODataService:
                         "monthly_cost_krw": float(row['전기요금원']),
                         "usage_share_percent": float(row['사용량_비중_%']),
                         "ranking": int(row['사용량_순위']),
-                        "infrastructure_score": float(row['인프라점수_개선']),
-                        "cost_efficiency_score": float(row['비용효율점수_개선']),
-                        "overall_efficiency_score": float(row['종합효율점수_개선']),
+                        "infrastructure_score": float(infrastructure_stability.loc[region]),
+                        "cost_efficiency_score": float(cost_competitiveness.loc[region]),
+                        "overall_efficiency_score": float(row['DCF_점수']),
                         "datacenter_grade": row['데이터센터등급_개선'],
                         "supply_capacity_mwh": float(row['사용량kWh']) / 1000 * 1.2,  # 20% 여유 가정
-                        "grid_stability": "stable" if row['종합효율점수_개선'] > 60 else "moderate"
+                        "grid_stability": "stable" if row['DCF_점수'] > 60 else "moderate"
                     }
                 
                 result = {
@@ -325,44 +319,34 @@ class KEPCODataService:
                 # 실제 분석 결과 사용하되 점수 재계산
                 data = self.comprehensive_data.copy()
                 
-                # 개선된 점수 계산
-                # 1. 전력 인프라 점수 (사용량과 점유율 고려)
-                usage_score = (data['사용량kWh'] / data['사용량kWh'].max() * 60).round(1)
-                share_score = data['사용량_비중_%'].apply(lambda x: 
-                    40 if 5 <= x <= 15 else  # 적정 구간
-                    max(0, 40 - abs(x - 10) * 2) if x < 5 or x > 15 else 0
-                ).round(1)
-                data['인프라점수_개선'] = (usage_score + share_score).round(1)
+                # 전문적인 데이터센터 입지 평가 모델 (DCF: Datacenter Feasibility Score)
+                # 1. 전력비용 경쟁력 지수 (0-100점) - 가중치 60%
+                avg_price = data['평균판매단가원kWh'].mean()
+                std_price = data['평균판매단가원kWh'].std()
+                cost_competitiveness = ((avg_price - data['평균판매단가원kWh']) / std_price * 20 + 50).clip(0, 100).round(1)
                 
-                # 2. 비용 효율성 점수 (통합 분석과 동일한 방식)
-                cost_score = data['평균판매단가원kWh'].apply(lambda x:
-                    max(0, min(100, (170 - x) * 5))  # 150원=100점, 170원=0점
-                ).round(1)
-                data['비용효율점수_개선'] = cost_score
+                # 2. 전력 인프라 안정성 지수 (0-100점) - 가중치 40%
+                usage_scale = (data['사용량_비중_%'] * 10).clip(0, 100).round(1)
+                customer_density = ((data['고객수'] / data['고객수'].max()) * 100).round(1) if '고객수' in data.columns else 50.0
+                infrastructure_stability = ((usage_scale + customer_density) / 2).round(1)
                 
-                # 3. 고객수 밀도 보너스 (안정성 지표)
-                customer_bonus = (data['고객수'] / data['고객수'].max() * 10).round(1) if '고객수' in data.columns else 5.0
-                
-                # 4. 종합 효율성 점수 (가중치: 인프라 50% + 비용 30% + 안정성 20%)
-                data['종합효율점수_개선'] = (
-                    data['인프라점수_개선'] * 0.5 +
-                    data['비용효율점수_개선'] * 0.3 +
-                    customer_bonus * 0.2
+                # 3. 종합 DCF 점수 계산
+                data['DCF_점수'] = (
+                    cost_competitiveness * 0.6 + 
+                    infrastructure_stability * 0.4
                 ).round(1)
                 
-                # 5. 개선된 등급 분류
-                def get_improved_grade(score):
-                    if score >= 75: return 'S급 (최적)'
-                    elif score >= 65: return 'A급 (우수)'
-                    elif score >= 55: return 'B급 (양호)'
-                    elif score >= 45: return 'C급 (보통)'
-                    else: return 'D급 (부적합)'
+                # 4. 전문적 등급 분류
+                def get_dcf_grade(score):
+                    if score >= 70: return 'Grade A (우수)'
+                    elif score >= 50: return 'Grade B (적합)'
+                    else: return 'Grade C (검토필요)'
                 
-                data['데이터센터등급_개선'] = data['종합효율점수_개선'].apply(get_improved_grade)
+                data['데이터센터등급_개선'] = data['DCF_점수'].apply(get_dcf_grade)
                 
                 # 순위 재계산
-                data = data.sort_values('종합효율점수_개선', ascending=False)
-                data['효율성순위_개선'] = range(1, len(data) + 1)
+                data = data.sort_values('DCF_점수', ascending=False)
+                data['DCF_순위'] = range(1, len(data) + 1)
                 
                 candidates = []
                 for region in data.index:
@@ -376,9 +360,9 @@ class KEPCODataService:
                     
                     candidate = {
                         "region": region,
-                        "overall_efficiency_score": float(row['종합효율점수_개선']),
-                        "infrastructure_score": float(row['인프라점수_개선']),
-                        "cost_efficiency_score": float(row['비용효율점수_개선']),
+                        "overall_efficiency_score": float(row['DCF_점수']),
+                        "infrastructure_score": float(infrastructure_stability.loc[region]),
+                        "cost_efficiency_score": float(cost_competitiveness.loc[region]),
                         "datacenter_grade": str(row['데이터센터등급_개선']),
                         "power_cost_krw_kwh": float(row['평균판매단가원kWh']),
                         "current_consumption_mw": round(current_mw, 1),
@@ -386,10 +370,10 @@ class KEPCODataService:
                         "remaining_capacity_mw": round(remaining_capacity, 1),
                         "load_increase_percent": round(load_increase_percent, 2),
                         "capacity_adequate": bool(remaining_capacity > required_power_mw),
-                        "grid_stability": "stable" if row['종합효율점수_개선'] > 60 else "moderate",
-                        "recommended": bool(row['종합효율점수_개선'] >= 65),
+                        "grid_stability": "stable" if row['DCF_점수'] > 60 else "moderate",
+                        "recommended": bool(row['DCF_점수'] >= 50),
                         "annual_power_cost_krw": float(required_power_mw * 8760 * float(row['평균판매단가원kWh'])),
-                        "ranking": int(row['효율성순위_개선'])
+                        "ranking": int(row['DCF_순위'])
                     }
                     
                     candidates.append(candidate)

@@ -151,7 +151,7 @@ async def get_optimal_datacenter_config(request: IntegratedAnalysisRequest) -> D
                 "cost_saving_vs_avg": round(cost_saving),
                 "roi_score": round(roi_score, 1),
                 "grid_stability": region_info.get('grid_stability', 'moderate'),
-                "recommended": region_info.get('overall_efficiency_score', 0) >= 65
+                "recommended": region_info.get('overall_efficiency_score', 0) >= 50
             }
             
             regional_recommendations.append(recommendation)
@@ -203,15 +203,15 @@ async def get_policy_insights() -> Dict[str, Any]:
             # 전력망 증설 우선순위 점수 (사용량 높음 + 효율성 낮음)
             grid_priority_score = (usage_gwh / 1000) * (100 - efficiency_score) / 100
             
-            # 데이터센터 유치 잠재력 점수 (개선된 공식)
+            # DCF 기반 전문적인 평가 모델 적용
             power_cost = region_info.get('average_price_krw_kwh', 160)
-            # 전력비 점수: 150원 기준으로 낮을수록 높은 점수 (0-100점)
-            cost_score = max(0, min(100, (170 - power_cost) * 5))  # 150원=100점, 170원=0점
-            # 종합 잠재력: 인프라 50% + 비용 30% + 효율성 20%
-            incentive_potential = (
-                infrastructure_score * 0.5 + 
-                cost_score * 0.3 + 
-                efficiency_score * 0.2
+            
+            # DCF 유치 잠재력 계산 (표준화된 점수)
+            # 전력비용 경쟁력: 전국 평균 대비 상대적 우위
+            cost_competitiveness = max(0, min(100, (160 - power_cost) / 20 * 100))  # 전국평균 160원 기준
+            dcf_potential = (
+                infrastructure_score * 0.4 + 
+                cost_competitiveness * 0.6  # 전력비용에 더 높은 가중치
             )
             
             if grid_priority_score > 5:  # 임계값 이상인 지역
@@ -219,22 +219,24 @@ async def get_policy_insights() -> Dict[str, Any]:
                     "region": region_name,
                     "priority_score": round(grid_priority_score, 1),
                     "current_usage_gwh": round(usage_gwh, 1),
-                    "efficiency_score": efficiency_score,
+                    "dcf_score": round(dcf_potential, 1),
                     "recommended_investment": f"{round(grid_priority_score * 100)}억원"
                 })
             
-            if efficiency_score >= 45 and incentive_potential >= 50:
+            # DCF 기준으로 Grade B 이상만 유치 대상으로 선정
+            if dcf_potential >= 50:  # Grade B 이상
+                grade = "Grade A (우수)" if dcf_potential >= 70 else "Grade B (적합)"
                 datacenter_incentive_targets.append({
                     "region": region_name,
-                    "incentive_potential": round(incentive_potential, 1),
-                    "datacenter_grade": region_info.get('datacenter_grade', 'D급'),
-                    "power_cost_advantage": round(160 - region_info.get('average_price_krw_kwh', 160), 2),
-                    "suggested_incentive": "전력요금 할인 + 토지 지원"
+                    "dcf_potential": round(dcf_potential, 1),
+                    "datacenter_grade": grade,
+                    "power_cost_advantage": round(160 - power_cost, 2),
+                    "suggested_incentive": "전력요금 할인 + 토지 지원" if dcf_potential >= 70 else "선별적 지원"
                 })
         
         # 우선순위별 정렬
         power_grid_priority.sort(key=lambda x: x['priority_score'], reverse=True)
-        datacenter_incentive_targets.sort(key=lambda x: x['incentive_potential'], reverse=True)
+        datacenter_incentive_targets.sort(key=lambda x: x['dcf_potential'], reverse=True)
         
         return {
             "status": "success",
