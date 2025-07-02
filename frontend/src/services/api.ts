@@ -153,4 +153,28 @@ export const optimizationApi = {
   },
 };
 
+// Integrated Analysis API
+export const integratedAnalysisApi = {
+  getRegionalGpuEfficiency: async () => {
+    const response = await api.get('/integrated-analysis/regional-gpu-efficiency');
+    return response.data;
+  },
+
+  getOptimalDatacenterConfig: async (config: {
+    gpu_type: string;
+    workload_type: string;
+    duration_hours: number;
+    utilization_rate: number;
+    datacenter_capacity_mw: number;
+  }) => {
+    const response = await api.post('/integrated-analysis/optimal-datacenter-config', config);
+    return response.data;
+  },
+
+  getPolicyInsights: async () => {
+    const response = await api.get('/integrated-analysis/policy-insights');
+    return response.data;
+  },
+};
+
 export default api;

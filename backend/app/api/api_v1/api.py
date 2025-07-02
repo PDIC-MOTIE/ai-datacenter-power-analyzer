@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.api_v1.endpoints import gpu_simulation, power_analysis, optimization
+from app.api.api_v1.endpoints import gpu_simulation, power_analysis, optimization, integrated_analysis
 
 api_router = APIRouter()
 
@@ -12,4 +12,7 @@ api_router.include_router(
 )
 api_router.include_router(
     optimization.router, prefix="/optimization", tags=["최적화"]
+)
+api_router.include_router(
+    integrated_analysis.router, prefix="/integrated-analysis", tags=["통합 분석"]
 )
