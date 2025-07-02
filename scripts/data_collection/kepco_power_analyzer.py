@@ -309,33 +309,63 @@ class KEPCOPowerAnalyzer:
         return cost_stats
     
     def find_optimal_datacenter_locations(self):
-        """데이터센터 최적 입지 분석 (사용량 대비 단가 효율성)"""
+        """데이터센터 최적 입지 분석 (개선된 점수 체계)"""
         if '지역별_전력사용량_순위' not in self.analysis_results:
             self.analyze_regional_power_usage()
             
         data = self.analysis_results['지역별_전력사용량_순위'].copy()
         
-        # 효율성 점수 계산
-        # 1. 전력 인프라 점수 (사용량이 높을수록 인프라 좋음)
-        data['인프라점수'] = (data['사용량kWh'] / data['사용량kWh'].max() * 100).round(2)
+        # 효율성 점수 계산 (개선된 방식)
+        # 1. 전력 인프라 점수 (사용량과 점유율을 고려)
+        # 사용량 점수 (0-60점)
+        usage_score = (data['사용량kWh'] / data['사용량kWh'].max() * 60).round(1)
+        # 점유율 점수 (0-40점) - 적정 점유율 5-15% 구간을 높게 평가
+        share_score = data['사용량_비중_%'].apply(lambda x: 
+            40 if 5 <= x <= 15 else  # 적정 구간
+            max(0, 40 - abs(x - 10) * 2) if x < 5 or x > 15 else 0  # 구간 밖은 감점
+        ).round(1)
+        data['인프라점수'] = (usage_score + share_score).round(1)
         
-        # 2. 비용 효율성 점수 (단가가 낮을수록 효율적)
+        # 2. 비용 효율성 점수 (상대적 비교 + 절대적 기준)
+        min_cost = data['평균판매단가원kWh'].min()
         max_cost = data['평균판매단가원kWh'].max()
-        data['비용효율점수'] = ((max_cost - data['평균판매단가원kWh']) / max_cost * 100).round(2)
+        cost_range = max_cost - min_cost
         
-        # 3. 종합 효율성 점수 (가중평균: 인프라 40%, 비용 60%)
-        data['종합효율점수'] = (data['인프라점수'] * 0.4 + data['비용효율점수'] * 0.6).round(2)
+        if cost_range > 0:
+            # 상대적 점수 (0-70점)
+            relative_score = ((max_cost - data['평균판매단가원kWh']) / cost_range * 70).round(1)
+            # 절대적 기준 점수 (0-30점) - 160원 이하면 높은 점수
+            absolute_score = data['평균판매단가원kWh'].apply(lambda x:
+                30 if x <= 150 else
+                25 if x <= 155 else  
+                20 if x <= 160 else
+                10 if x <= 165 else 0
+            )
+            data['비용효율점수'] = (relative_score + absolute_score).round(1)
+        else:
+            data['비용효율점수'] = 50.0  # 모든 지역이 같은 단가일 경우
+        
+        # 3. 추가 보너스 점수
+        # 고객수 밀도 보너스 (0-10점) - 인프라 안정성 지표
+        customer_bonus = (data['고객수'] / data['고객수'].max() * 10).round(1)
+        
+        # 4. 종합 효율성 점수 계산
+        data['종합효율점수'] = (
+            data['인프라점수'] * 0.4 +      # 인프라 40%
+            data['비용효율점수'] * 0.5 +    # 비용 50%  
+            customer_bonus * 0.1           # 안정성 10%
+        ).round(1)
         
         # 효율성 순위
         data = data.sort_values('종합효율점수', ascending=False)
         data['효율성순위'] = range(1, len(data) + 1)
         
-        # 데이터센터 등급 분류
+        # 데이터센터 등급 분류 (기준 완화)
         def get_datacenter_grade(score):
-            if score >= 80: return 'S급 (최적)'
-            elif score >= 70: return 'A급 (우수)'
-            elif score >= 60: return 'B급 (양호)'
-            elif score >= 50: return 'C급 (보통)'
+            if score >= 75: return 'S급 (최적)'
+            elif score >= 65: return 'A급 (우수)'
+            elif score >= 55: return 'B급 (양호)'
+            elif score >= 45: return 'C급 (보통)'
             else: return 'D급 (부적합)'
         
         data['데이터센터등급'] = data['종합효율점수'].apply(get_datacenter_grade)

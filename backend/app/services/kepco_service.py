@@ -122,10 +122,47 @@ class KEPCODataService:
         
         try:
             if not self.comprehensive_data.empty:
-                # 실제 분석 데이터 사용 (null 값이 있는 지역 제외)
+                # 실제 분석 데이터 사용하되 개선된 점수 적용
+                data = self.comprehensive_data.copy()
+                
+                # 개선된 점수 계산 (find_optimal_datacenter_locations와 동일한 로직)
+                usage_score = (data['사용량kWh'] / data['사용량kWh'].max() * 60).round(1)
+                share_score = data['사용량_비중_%'].apply(lambda x: 
+                    40 if 5 <= x <= 15 else
+                    max(0, 40 - abs(x - 10) * 2) if x < 5 or x > 15 else 0
+                ).round(1)
+                data['인프라점수_개선'] = (usage_score + share_score).round(1)
+                
+                min_cost = data['평균판매단가원kWh'].min()
+                max_cost = data['평균판매단가원kWh'].max()
+                cost_range = max_cost - min_cost
+                
+                if cost_range > 0:
+                    relative_score = ((max_cost - data['평균판매단가원kWh']) / cost_range * 70).round(1)
+                    absolute_score = data['평균판매단가원kWh'].apply(lambda x:
+                        30 if x <= 150 else 25 if x <= 155 else 20 if x <= 160 else 10 if x <= 165 else 0
+                    )
+                    data['비용효율점수_개선'] = (relative_score + absolute_score).round(1)
+                else:
+                    data['비용효율점수_개선'] = 50.0
+                
+                customer_bonus = (data['고객수'] / data['고객수'].max() * 10).round(1) if '고객수' in data.columns else 5.0
+                data['종합효율점수_개선'] = (
+                    data['인프라점수_개선'] * 0.4 + data['비용효율점수_개선'] * 0.5 + customer_bonus * 0.1
+                ).round(1)
+                
+                def get_improved_grade(score):
+                    if score >= 75: return 'S급 (최적)'
+                    elif score >= 65: return 'A급 (우수)'
+                    elif score >= 55: return 'B급 (양호)'
+                    elif score >= 45: return 'C급 (보통)'
+                    else: return 'D급 (부적합)'
+                
+                data['데이터센터등급_개선'] = data['종합효율점수_개선'].apply(get_improved_grade)
+                
                 regional_data = {}
-                for region in self.comprehensive_data.index:
-                    row = self.comprehensive_data.loc[region]
+                for region in data.index:
+                    row = data.loc[region]
                     
                     # null 값이 있는 지역은 제외
                     if pd.isna(row['사용량kWh']) or pd.isna(row['평균판매단가원kWh']) or region == '미분류':
@@ -138,12 +175,12 @@ class KEPCODataService:
                         "monthly_cost_krw": float(row['전기요금원']),
                         "usage_share_percent": float(row['사용량_비중_%']),
                         "ranking": int(row['사용량_순위']),
-                        "infrastructure_score": float(row['인프라점수']),
-                        "cost_efficiency_score": float(row['비용효율점수']),
-                        "overall_efficiency_score": float(row['종합효율점수']),
-                        "datacenter_grade": row['데이터센터등급'],
+                        "infrastructure_score": float(row['인프라점수_개선']),
+                        "cost_efficiency_score": float(row['비용효율점수_개선']),
+                        "overall_efficiency_score": float(row['종합효율점수_개선']),
+                        "datacenter_grade": row['데이터센터등급_개선'],
                         "supply_capacity_mwh": float(row['사용량kWh']) / 1000 * 1.2,  # 20% 여유 가정
-                        "grid_stability": "stable" if row['종합효율점수'] > 50 else "moderate"
+                        "grid_stability": "stable" if row['종합효율점수_개선'] > 60 else "moderate"
                     }
                 
                 result = {
@@ -283,45 +320,92 @@ class KEPCODataService:
         }
     
     def find_optimal_datacenter_locations(self, required_power_mw: float = 100, top_n: int = 5) -> List[Dict[str, Any]]:
-        """데이터센터 최적 입지 추천 - 실제 분석 데이터 기반"""
+        """데이터센터 최적 입지 추천 - 개선된 점수 체계 적용"""
         
         try:
             if not self.comprehensive_data.empty:
-                # 실제 분석 결과 사용
-                candidates = []
+                # 실제 분석 결과 사용하되 점수 재계산
+                data = self.comprehensive_data.copy()
                 
-                for region in self.comprehensive_data.index:
-                    row = self.comprehensive_data.loc[region]
+                # 개선된 점수 계산
+                # 1. 전력 인프라 점수 (사용량과 점유율 고려)
+                usage_score = (data['사용량kWh'] / data['사용량kWh'].max() * 60).round(1)
+                share_score = data['사용량_비중_%'].apply(lambda x: 
+                    40 if 5 <= x <= 15 else  # 적정 구간
+                    max(0, 40 - abs(x - 10) * 2) if x < 5 or x > 15 else 0
+                ).round(1)
+                data['인프라점수_개선'] = (usage_score + share_score).round(1)
+                
+                # 2. 비용 효율성 점수 (상대적 + 절대적 기준)
+                min_cost = data['평균판매단가원kWh'].min()
+                max_cost = data['평균판매단가원kWh'].max()
+                cost_range = max_cost - min_cost
+                
+                if cost_range > 0:
+                    relative_score = ((max_cost - data['평균판매단가원kWh']) / cost_range * 70).round(1)
+                    absolute_score = data['평균판매단가원kWh'].apply(lambda x:
+                        30 if x <= 150 else
+                        25 if x <= 155 else  
+                        20 if x <= 160 else
+                        10 if x <= 165 else 0
+                    )
+                    data['비용효율점수_개선'] = (relative_score + absolute_score).round(1)
+                else:
+                    data['비용효율점수_개선'] = 50.0
+                
+                # 3. 고객수 밀도 보너스
+                customer_bonus = (data['고객수'] / data['고객수'].max() * 10).round(1) if '고객수' in data.columns else 5.0
+                
+                # 4. 종합 효율성 점수 (개선된 방식)
+                data['종합효율점수_개선'] = (
+                    data['인프라점수_개선'] * 0.4 +
+                    data['비용효율점수_개선'] * 0.5 +
+                    customer_bonus * 0.1
+                ).round(1)
+                
+                # 5. 개선된 등급 분류
+                def get_improved_grade(score):
+                    if score >= 75: return 'S급 (최적)'
+                    elif score >= 65: return 'A급 (우수)'
+                    elif score >= 55: return 'B급 (양호)'
+                    elif score >= 45: return 'C급 (보통)'
+                    else: return 'D급 (부적합)'
+                
+                data['데이터센터등급_개선'] = data['종합효율점수_개선'].apply(get_improved_grade)
+                
+                # 순위 재계산
+                data = data.sort_values('종합효율점수_개선', ascending=False)
+                data['효율성순위_개선'] = range(1, len(data) + 1)
+                
+                candidates = []
+                for region in data.index:
+                    row = data.loc[region]
                     
                     # 데이터센터 영향 분석
-                    current_mw = float(row['사용량kWh']) / 1000 / 8760  # 연간 kWh -> 평균 MW
-                    supply_capacity = current_mw * 1.2  # 20% 여유 가정
-                    
+                    current_mw = float(row['사용량kWh']) / 1000 / 8760
+                    supply_capacity = current_mw * 1.2
                     remaining_capacity = supply_capacity - current_mw
                     load_increase_percent = (required_power_mw / current_mw) * 100 if current_mw > 0 else 0
                     
                     candidate = {
                         "region": region,
-                        "overall_efficiency_score": float(row['종합효율점수']),
-                        "infrastructure_score": float(row['인프라점수']),
-                        "cost_efficiency_score": float(row['비용효율점수']),
-                        "datacenter_grade": str(row['데이터센터등급']),
+                        "overall_efficiency_score": float(row['종합효율점수_개선']),
+                        "infrastructure_score": float(row['인프라점수_개선']),
+                        "cost_efficiency_score": float(row['비용효율점수_개선']),
+                        "datacenter_grade": str(row['데이터센터등급_개선']),
                         "power_cost_krw_kwh": float(row['평균판매단가원kWh']),
                         "current_consumption_mw": round(current_mw, 1),
                         "supply_capacity_mw": round(supply_capacity, 1),
                         "remaining_capacity_mw": round(remaining_capacity, 1),
                         "load_increase_percent": round(load_increase_percent, 2),
                         "capacity_adequate": bool(remaining_capacity > required_power_mw),
-                        "grid_stability": "stable" if row['종합효율점수'] > 50 else "moderate",
-                        "recommended": bool(row['종합효율점수'] >= 70),
+                        "grid_stability": "stable" if row['종합효율점수_개선'] > 60 else "moderate",
+                        "recommended": bool(row['종합효율점수_개선'] >= 65),
                         "annual_power_cost_krw": float(required_power_mw * 8760 * float(row['평균판매단가원kWh'])),
-                        "ranking": int(row['효율성순위'])
+                        "ranking": int(row['효율성순위_개선'])
                     }
                     
                     candidates.append(candidate)
-                
-                # 종합 효율성 점수로 정렬
-                candidates.sort(key=lambda x: x['overall_efficiency_score'], reverse=True)
                 
                 return candidates[:top_n]
             
