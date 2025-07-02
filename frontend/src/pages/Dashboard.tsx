@@ -90,7 +90,7 @@ export function Dashboard() {
               </Button>
             </Link>
             <Link to="/power-analysis">
-              <Button size="lg" variant="outline" className="border-white text-white hover:bg-white hover:text-blue-600">
+              <Button size="lg" className="bg-white text-blue-600 hover:bg-blue-50">
                 <MapPin className="w-5 h-5 mr-2" />
                 전력 분석 보기
               </Button>
