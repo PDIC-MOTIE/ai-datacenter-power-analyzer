@@ -203,8 +203,16 @@ async def get_policy_insights() -> Dict[str, Any]:
             # 전력망 증설 우선순위 점수 (사용량 높음 + 효율성 낮음)
             grid_priority_score = (usage_gwh / 1000) * (100 - efficiency_score) / 100
             
-            # 데이터센터 유치 잠재력 점수
-            incentive_potential = (infrastructure_score * 0.6 + (100 - region_info.get('average_price_krw_kwh', 160)) * 0.4)
+            # 데이터센터 유치 잠재력 점수 (개선된 공식)
+            power_cost = region_info.get('average_price_krw_kwh', 160)
+            # 전력비 점수: 150원 기준으로 낮을수록 높은 점수 (0-100점)
+            cost_score = max(0, min(100, (170 - power_cost) * 5))  # 150원=100점, 170원=0점
+            # 종합 잠재력: 인프라 50% + 비용 30% + 효율성 20%
+            incentive_potential = (
+                infrastructure_score * 0.5 + 
+                cost_score * 0.3 + 
+                efficiency_score * 0.2
+            )
             
             if grid_priority_score > 5:  # 임계값 이상인 지역
                 power_grid_priority.append({
@@ -215,7 +223,7 @@ async def get_policy_insights() -> Dict[str, Any]:
                     "recommended_investment": f"{round(grid_priority_score * 100)}억원"
                 })
             
-            if efficiency_score >= 55 and region_info.get('average_price_krw_kwh', 160) <= 162:
+            if efficiency_score >= 45 and incentive_potential >= 50:
                 datacenter_incentive_targets.append({
                     "region": region_name,
                     "incentive_potential": round(incentive_potential, 1),
