@@ -16,6 +16,7 @@ class KEPCODataService:
         
         # 실제 분석 데이터 파일 경로 (프로젝트 루트 기준)
         self.data_dir = Path(__file__).parent.parent.parent.parent / "data" / "processed" / "kepco"
+        self.raw_data_dir = Path(__file__).parent.parent.parent.parent / "data" / "raw"
         
         # 지역별 코드 매핑 (실제 데이터에 맞게 업데이트)
         self.region_codes = {
@@ -44,6 +45,10 @@ class KEPCODataService:
         
         # 실제 분석 결과 로드
         self._load_analysis_results()
+        
+        # 분석 결과가 없으면 자동 생성
+        if self.comprehensive_data.empty:
+            self._run_analysis_if_needed()
     
     def _load_analysis_results(self):
         """실제 분석 결과 파일들을 로드"""
@@ -77,6 +82,34 @@ class KEPCODataService:
             self.cost_gap_data = pd.DataFrame() 
         if not hasattr(self, 'monthly_data'):
             self.monthly_data = pd.DataFrame()
+    
+    def _run_analysis_if_needed(self):
+        """분석 결과가 없을 때 자동으로 분석 실행"""
+        try:
+            print("No analysis results found. Running analysis...")
+            
+            # 상대 경로로 분석 스크립트 실행
+            script_path = Path(__file__).parent.parent.parent.parent / "scripts" / "data_collection" / "kepco_power_analyzer.py"
+            
+            if script_path.exists():
+                import subprocess
+                import sys
+                
+                # Python 스크립트 실행
+                result = subprocess.run([sys.executable, str(script_path)], 
+                                      capture_output=True, text=True, cwd=script_path.parent.parent.parent)
+                
+                if result.returncode == 0:
+                    print("Analysis completed successfully")
+                    # 분석 결과 다시 로드
+                    self._load_analysis_results()
+                else:
+                    print(f"Analysis failed: {result.stderr}")
+            else:
+                print(f"Analysis script not found: {script_path}")
+                
+        except Exception as e:
+            print(f"Error running analysis: {e}")
         
     def get_regional_power_consumption(self, year: int = 2024) -> Dict[str, Any]:
         """시도별 전력판매량 데이터 조회 - 실제 분석 데이터 기반"""
