@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '../utils/cn';
 import { Button } from './ui/button';
-import { Zap, BarChart3, Cpu, Menu, X } from 'lucide-react';
+import { Zap, BarChart3, Cpu, Menu, X, TrendingUp } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -12,6 +12,7 @@ const navigation = [
   { name: '대시보드', href: '/', icon: BarChart3 },
   { name: 'GPU 시뮬레이션', href: '/gpu-simulation', icon: Cpu },
   { name: '전력 분석', href: '/power-analysis', icon: Zap },
+  { name: '통합 분석', href: '/integrated-analysis', icon: TrendingUp },
 ];
 
 export function Layout({ children }: LayoutProps) {

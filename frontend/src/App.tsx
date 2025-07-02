@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { GpuSimulation } from './pages/GpuSimulation';
 import { PowerAnalysis } from './pages/PowerAnalysis';
+import IntegratedAnalysis from './pages/IntegratedAnalysis';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -24,6 +25,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/gpu-simulation" element={<GpuSimulation />} />
             <Route path="/power-analysis" element={<PowerAnalysis />} />
+            <Route path="/integrated-analysis" element={<IntegratedAnalysis />} />
           </Routes>
         </Layout>
       </Router>
